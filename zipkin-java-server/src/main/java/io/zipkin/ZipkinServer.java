@@ -13,38 +13,37 @@
  */
 package io.zipkin;
 
+import com.facebook.swift.codec.ThriftCodecManager;
+import com.facebook.swift.service.ThriftServer;
+import com.facebook.swift.service.ThriftServerConfig;
+import com.facebook.swift.service.ThriftServiceProcessor;
 import com.zaxxer.hikari.HikariDataSource;
 import io.zipkin.jdbc.JDBCSpanStore;
-import java.io.Closeable;
+import io.zipkin.scribe.Scribe;
+import io.zipkin.scribe.ScribeSpanConsumer;
 import java.io.IOException;
 import org.jooq.conf.Settings;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.Bean;
 
 import static io.zipkin.internal.Util.envOr;
+import static java.util.Collections.emptyList;
 
-public final class ZipkinServer implements Closeable {
-
-  private final int queryPort;
-  private final SpanStore spanStore;
-
-  private ZipkinServer(int queryPort, SpanStore spanStore) {
-    this.queryPort = queryPort;
-    this.spanStore = spanStore;
-  }
-
-  public void start() throws IOException {
-    // TODO
-  }
-
-  public void stop() {
-    // TODO
-    spanStore.close();
-  }
+@SpringBootApplication
+public class ZipkinServer {
 
   public static void main(String[] args) throws IOException, InterruptedException {
+    // Silence Invalid method name: '__can__finagle__trace__v3__'
+    System.setProperty("logging.level.com.facebook.swift.service.ThriftServiceProcessor", "OFF");
 
-    int queryPort = envOr("QUERY_PORT", 9411);
+    System.setProperty("server.port", envOr("QUERY_PORT", "9411"));
+    SpringApplication.run(ZipkinServer.class, args)
+        .getBean(ThriftServer.class).start();
+  }
 
-    final ZipkinServer server;
+  @Bean
+  SpanStore provideSpanStore() {
     if (System.getenv("MYSQL_HOST") != null) {
       String mysqlHost = System.getenv("MYSQL_HOST");
       int mysqlPort = envOr("MYSQL_TCP_PORT", 3306);
@@ -54,26 +53,28 @@ public final class ZipkinServer implements Closeable {
       String url = String.format("jdbc:mysql://%s:%s/zipkin?user=%s&password=%s&autoReconnect=true",
           mysqlHost, mysqlPort, mysqlUser, mysqlPass);
 
-      // TODO: replace with HikariDataSource when 2.4.2 is out
       HikariDataSource datasource = new HikariDataSource();
       datasource.setDriverClassName("com.mysql.jdbc.Driver");
       datasource.setJdbcUrl(url);
       datasource.setMaximumPoolSize(10);
       datasource.setConnectionTestQuery("SELECT '1'");
-      server = new ZipkinServer(queryPort, new JDBCSpanStore(datasource, new Settings()));
+      return new JDBCSpanStore(datasource, new Settings());
     } else {
-      server = new ZipkinServer(queryPort, new InMemorySpanStore());
-    }
-    try {
-      server.start();
-      Thread.currentThread().join();
-    } finally {
-      server.close();
+      return new InMemorySpanStore();
     }
   }
 
-  @Override
-  public void close() {
-    stop();
+  @Bean
+  Scribe scribeConsumer(SpanStore spanStore) {
+    return new ScribeSpanConsumer(spanStore::accept);
+  }
+
+  @Bean
+  ThriftServer scribeServer(Scribe scribe) {
+    int scribePort = envOr("COLLECTOR_PORT", 9410);
+    ThriftServiceProcessor processor = new ThriftServiceProcessor(new ThriftCodecManager(), emptyList(), scribe);
+    return new ThriftServer(processor, new ThriftServerConfig()
+        .setBindAddress("localhost")
+        .setPort(scribePort));
   }
 }
