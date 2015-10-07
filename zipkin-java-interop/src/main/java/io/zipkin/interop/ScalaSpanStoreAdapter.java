@@ -13,6 +13,10 @@
  */
 package io.zipkin.interop;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.twitter.util.Future;
@@ -20,12 +24,10 @@ import com.twitter.zipkin.common.Span;
 import com.twitter.zipkin.json.JsonSpan;
 import com.twitter.zipkin.json.ZipkinJson$;
 import com.twitter.zipkin.storage.QueryRequest;
+
 import io.zipkin.Codec;
 import io.zipkin.SpanStore;
 import io.zipkin.internal.Nullable;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
 import scala.Tuple2;
 import scala.collection.Iterator;
 import scala.collection.JavaConversions;
@@ -63,14 +65,14 @@ public final class ScalaSpanStoreAdapter extends com.twitter.zipkin.storage.Span
       Tuple2<String, String> keyValue = i.next();
       request.addBinaryAnnotation(keyValue._1(), keyValue._2());
     }
-    return toSeqFuture(spanStore.getTraces(request.build()));
+    return toSeqFuture(this.spanStore.getTraces(request.build()));
   }
 
   @Override
   public Future<Seq<Seq<Span>>> getTracesByIds(Seq<Object> input) {
     List<Long> traceIds = new ArrayList<>(input.size());
-    for (Iterator<Object> i = input.iterator(); i.hasNext(); traceIds.add((Long) i.next())) ;
-    return toSeqFuture(spanStore.getTracesByIds(traceIds));
+    for (Object i : JavaConversions.asJavaCollection(input)) { traceIds.add((Long) i);}
+    return toSeqFuture(this.spanStore.getTracesByIds(traceIds));
   }
 
   static Future<Seq<Seq<Span>>> toSeqFuture(List<List<io.zipkin.Span>> traces) {
@@ -85,35 +87,35 @@ public final class ScalaSpanStoreAdapter extends com.twitter.zipkin.storage.Span
       }
       result.add(JavaConversions.asScalaBuffer(spans));
     }
-    return Future.value(JavaConversions.asScalaBuffer(result).toSeq());
+    return Future.value(JavaConversions.asScalaBuffer(result).seq());
   }
 
   @Override
   public Future<Seq<String>> getAllServiceNames() {
-    return Future.value(JavaConversions.asScalaBuffer(spanStore.getServiceNames()).toSeq());
+    return Future.value(JavaConversions.asScalaBuffer(this.spanStore.getServiceNames()).seq());
   }
 
   @Override
   public Future<Seq<String>> getSpanNames(String service) {
-    return Future.value(JavaConversions.asScalaBuffer(spanStore.getSpanNames(service)).toSeq());
+    return Future.value(JavaConversions.asScalaBuffer(this.spanStore.getSpanNames(service)).seq());
   }
 
   @Override
   public Future<BoxedUnit> apply(Seq<Span> input) {
     List<io.zipkin.Span> spans = new ArrayList<>(input.size());
-    for (Iterator<Span> i = input.iterator(); i.hasNext(); ) {
-      io.zipkin.Span span = invert(i.next());
+    for (Span i : JavaConversions.asJavaCollection(input)) {
+      io.zipkin.Span span = invert(i);
       if (span != null) {
         spans.add(span);
       }
     }
-    spanStore.accept(spans);
+    this.spanStore.accept(spans);
     return Future.Unit();
   }
 
   @Override
   public void close() {
-    spanStore.close();
+    this.spanStore.close();
   }
 
   @Nullable
