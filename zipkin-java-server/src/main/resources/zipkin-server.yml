@@ -18,6 +18,7 @@ server:
 spring:
   datasource:
     driver-class-name: com.mysql.jdbc.Driver
+# add this for mysql tracing: &statementInterceptors=com.github.kristofa.brave.mysql.MySQLStatementInterceptor
     url: jdbc:mysql://${mysql.host}:${mysql.port}/${mysql.db}?autoReconnect=true
     username: ${mysql.username}
     password: ${mysql.password}

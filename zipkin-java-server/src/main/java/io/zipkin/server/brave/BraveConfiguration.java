@@ -13,29 +13,38 @@
  */
 package io.zipkin.server.brave;
 
-import com.github.kristofa.brave.Brave;
-import com.github.kristofa.brave.zipkin.ZipkinSpanCollector;
 import java.util.Collections;
+
 import javax.inject.Singleton;
-import org.springframework.beans.factory.annotation.Value;
+
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Lazy;
-import org.springframework.context.annotation.Scope;
-import org.springframework.context.annotation.ScopedProxyMode;
+import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.scheduling.annotation.Scheduled;
+
+import com.github.kristofa.brave.Brave;
+import com.github.kristofa.brave.zipkin.ZipkinSpanCollector;
+
+import io.zipkin.SpanStore;
 
 @Configuration
 @Import({ApiTracerConfiguration.class, JDBCTracerConfiguration.class})
+@EnableScheduling
 public class BraveConfiguration {
 
-  /** Lazy because ZipkinSpanCollector makes network connections in its constructor. */
+  @Autowired
+  SpanStore spanStore;
+
   @Bean
-  @Singleton
-  @Lazy
-  @Scope(proxyMode = ScopedProxyMode.TARGET_CLASS)
-  ZipkinSpanCollector zipkinSpanCollector(@Value("${zipkin.collector.port:9410}") int scribePort) {
-    return new ZipkinSpanCollector("127.0.0.1", scribePort);
+  SpanStoreSpanCollector braveSpanCollector() {
+    return new SpanStoreSpanCollector(spanStore);
+  }
+
+  @Scheduled(fixedDelayString="${zipkin.collector.delayMillisec:1000}")
+  public void flushSpans() {
+    braveSpanCollector().flush();
   }
 
   @Bean
