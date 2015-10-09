@@ -69,6 +69,13 @@
     </dependency>
 
     <dependency>
+      <groupId>com.github.kristofa</groupId>
+      <artifactId>brave-mysql</artifactId>
+      <version>${brave.version}</version>
+      <optional>true</optional>
+    </dependency>
+
+    <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
       <optional>true</optional>

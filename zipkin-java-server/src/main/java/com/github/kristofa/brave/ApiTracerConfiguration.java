@@ -22,7 +22,9 @@ import java.security.SecureRandom;
 import java.util.Collections;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurerAdapter;
 
@@ -31,6 +33,7 @@ import com.github.kristofa.brave.spring.ServletHandlerInterceptor;
 import com.github.kristofa.brave.zipkin.ZipkinSpanCollector;
 
 @Configuration
+@Import(MySqlTracerConfiguration.class)
 public class ApiTracerConfiguration extends WebMvcConfigurerAdapter {
 
   @Value("${server.port}")
@@ -51,8 +54,9 @@ public class ApiTracerConfiguration extends WebMvcConfigurerAdapter {
     }
   }
 
-  private ServerAndClientSpanState state(int port) {
-    return new ThreadLocalServerAndClientSpanState(localAddress(), port, "zipkin-query");
+  @Bean
+  ServerAndClientSpanState braveSpanState() {
+    return new ThreadLocalServerAndClientSpanState(localAddress(), this.port, "zipkin-query");
   }
 
   private ServerTracer tracer(ServerAndClientSpanState state, int scribePort) {
@@ -60,13 +64,18 @@ public class ApiTracerConfiguration extends WebMvcConfigurerAdapter {
         .state(state)
         .randomGenerator(new SecureRandom())
         .traceFilters(Collections.emptyList())
-        .spanCollector(new ZipkinSpanCollector("127.0.0.1", scribePort))
+        .spanCollector(braveSpanCollector())
         .build();
+  }
+
+  @Bean
+  ZipkinSpanCollector braveSpanCollector() {
+    return new ZipkinSpanCollector("127.0.0.1", this.scribePort);
   }
 
   @Override
   public void addInterceptors(InterceptorRegistry registry) {
-    ServerAndClientSpanState state = state(this.port);
+    ServerAndClientSpanState state = braveSpanState();
     ServerTracer tracer = tracer(state, this.scribePort);
     registry.addInterceptor(new ServletHandlerInterceptor(
         new ServerRequestInterceptor(tracer),

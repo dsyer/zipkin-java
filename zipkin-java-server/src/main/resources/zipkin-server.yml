@@ -18,7 +18,7 @@ server:
 spring:
   datasource:
     driver-class-name: com.mysql.jdbc.Driver
-    url: jdbc:mysql://${mysql.host}:${mysql.port}/${mysql.db}?autoReconnect=true
+    url: jdbc:mysql://${mysql.host}:${mysql.port}/${mysql.db}?autoReconnect=true&statementInterceptors=com.github.kristofa.brave.mysql.MySQLStatementInterceptor
     username: ${mysql.username}
     password: ${mysql.password}
     schema: classpath:/mysql.sql
