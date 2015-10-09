@@ -14,46 +14,48 @@
 // TODO: switch package back after https://github.com/openzipkin/brave/pull/99
 package com.github.kristofa.brave;
 
-import com.github.kristofa.brave.http.DefaultSpanNameProvider;
-import com.github.kristofa.brave.spring.ServletHandlerInterceptor;
-import com.github.kristofa.brave.zipkin.ZipkinSpanCollector;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.security.SecureRandom;
 import java.util.Collections;
-import javax.inject.Singleton;
-import org.springframework.beans.factory.annotation.Autowired;
+
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurerAdapter;
 
+import com.github.kristofa.brave.http.DefaultSpanNameProvider;
+import com.github.kristofa.brave.spring.ServletHandlerInterceptor;
+import com.github.kristofa.brave.zipkin.ZipkinSpanCollector;
+
 @Configuration
 public class ApiTracerConfiguration extends WebMvcConfigurerAdapter {
 
+  @Value("${server.port}")
+  int port;
+  @Value("${zipkin.collector.port}")
+  int scribePort;
+
   /** This attempts to get the IP associated with the zipkin-query server's endpoint. */
   // http://stackoverflow.com/questions/8765578/get-local-ip-address-without-connecting-to-the-internet
-  @Bean
-  @Singleton
-  static InetAddress localAddress() throws SocketException {
+  private InetAddress localAddress() {
+    try {
     return Collections.list(NetworkInterface.getNetworkInterfaces()).stream()
         .flatMap(i -> Collections.list(i.getInetAddresses()).stream())
         .filter(ip -> ip instanceof Inet4Address && ip.isSiteLocalAddress())
         .findAny().orElseThrow(SocketException::new);
+    } catch (SocketException e) {
+      throw new IllegalStateException("Cannot find local address", e);
+    }
   }
 
-  @Bean
-  @Singleton
-  static ServerAndClientSpanState state(InetAddress localAddress, @Value("${server.port}") int port) {
-    return new ThreadLocalServerAndClientSpanState(localAddress, port, "zipkin-query");
+  private ServerAndClientSpanState state(int port) {
+    return new ThreadLocalServerAndClientSpanState(localAddress(), port, "zipkin-query");
   }
 
-  @Bean
-  @Singleton
-  static ServerTracer tracer(ServerAndClientSpanState state, @Value("${zipkin.collector.port}") int scribePort) {
+  private ServerTracer tracer(ServerAndClientSpanState state, int scribePort) {
     return ServerTracer.builder()
         .state(state)
         .randomGenerator(new SecureRandom())
@@ -62,18 +64,15 @@ public class ApiTracerConfiguration extends WebMvcConfigurerAdapter {
         .build();
   }
 
-  @Autowired
-  ServerAndClientSpanState state;
-  @Autowired
-  ServerTracer tracer;
-
   @Override
   public void addInterceptors(InterceptorRegistry registry) {
+    ServerAndClientSpanState state = state(this.port);
+    ServerTracer tracer = tracer(state, this.scribePort);
     registry.addInterceptor(new ServletHandlerInterceptor(
-        new ServerRequestInterceptor(this.tracer),
-        new ServerResponseInterceptor(this.tracer),
+        new ServerRequestInterceptor(tracer),
+        new ServerResponseInterceptor(tracer),
         new DefaultSpanNameProvider(),
-        new ServerSpanThreadBinder(this.state)
+        new ServerSpanThreadBinder(state )
     ));
   }
 }
