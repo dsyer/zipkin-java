@@ -12,10 +12,7 @@
  * the License.
  */
 
-package com.github.kristofa.brave;
-
-import java.security.SecureRandom;
-import java.util.Collections;
+package io.zipkin.server.brave;
 
 import javax.annotation.PostConstruct;
 
@@ -23,11 +20,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.context.annotation.Configuration;
 
+import com.github.kristofa.brave.Brave;
 import com.github.kristofa.brave.mysql.MySQLStatementInterceptor;
 import com.mysql.jdbc.Driver;
 
 /**
- * @author Dave Syer
+ * Sets up the MySql tracing in Brave as an initialization.
  *
  */
 @ConditionalOnClass({ Driver.class, MySQLStatementInterceptor.class })
@@ -35,19 +33,11 @@ import com.mysql.jdbc.Driver;
 public class MySqlTracerConfiguration {
 
   @Autowired
-  ServerAndClientSpanState state;
-  @Autowired
-  SpanCollector spanCollector;
+  Brave brave;
 
   @PostConstruct
   public void init() {
-    MySQLStatementInterceptor.setClientTracer(tracer());
-  }
-
-  private ClientTracer tracer() {
-    return ClientTracer.builder().traceFilters(Collections.emptyList())
-        .randomGenerator(new SecureRandom()).state(this.state)
-        .spanCollector(this.spanCollector).build();
+    MySQLStatementInterceptor.setClientTracer(this.brave.clientTracer());
   }
 
 }

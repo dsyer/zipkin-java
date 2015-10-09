@@ -12,22 +12,22 @@
  * the License.
  */
 // TODO: switch package back after https://github.com/openzipkin/brave/pull/99
-package com.github.kristofa.brave;
-
-import java.net.Inet4Address;
-import java.net.InetAddress;
-import java.net.NetworkInterface;
-import java.net.SocketException;
-import java.security.SecureRandom;
-import java.util.Collections;
+package io.zipkin.server.brave;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.context.annotation.Scope;
+import org.springframework.context.annotation.ScopedProxyMode;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurerAdapter;
 
+import com.github.kristofa.brave.Brave;
+import com.github.kristofa.brave.ServerRequestInterceptor;
+import com.github.kristofa.brave.ServerResponseInterceptor;
+import com.github.kristofa.brave.ServerTracer;
 import com.github.kristofa.brave.http.DefaultSpanNameProvider;
 import com.github.kristofa.brave.spring.ServletHandlerInterceptor;
 import com.github.kristofa.brave.zipkin.ZipkinSpanCollector;
@@ -36,52 +36,26 @@ import com.github.kristofa.brave.zipkin.ZipkinSpanCollector;
 @Import(MySqlTracerConfiguration.class)
 public class ApiTracerConfiguration extends WebMvcConfigurerAdapter {
 
-  @Value("${server.port}")
-  int port;
-  @Value("${zipkin.collector.port}")
+  @Value("${zipkin.collector.port:9410}")
   int scribePort;
 
-  /** This attempts to get the IP associated with the zipkin-query server's endpoint. */
-  // http://stackoverflow.com/questions/8765578/get-local-ip-address-without-connecting-to-the-internet
-  private InetAddress localAddress() {
-    try {
-    return Collections.list(NetworkInterface.getNetworkInterfaces()).stream()
-        .flatMap(i -> Collections.list(i.getInetAddresses()).stream())
-        .filter(ip -> ip instanceof Inet4Address && ip.isSiteLocalAddress())
-        .findAny().orElseThrow(SocketException::new);
-    } catch (SocketException e) {
-      throw new IllegalStateException("Cannot find local address", e);
-    }
+  @Bean
+  Brave brave() {
+    return new Brave.Builder("zipkin-query").spanCollector(braveSpanCollector()).build();
   }
 
   @Bean
-  ServerAndClientSpanState braveSpanState() {
-    return new ThreadLocalServerAndClientSpanState(localAddress(), this.port, "zipkin-query");
-  }
-
-  private ServerTracer tracer(ServerAndClientSpanState state, int scribePort) {
-    return ServerTracer.builder()
-        .state(state)
-        .randomGenerator(new SecureRandom())
-        .traceFilters(Collections.emptyList())
-        .spanCollector(braveSpanCollector())
-        .build();
-  }
-
-  @Bean
+  @Lazy
+  @Scope(proxyMode = ScopedProxyMode.TARGET_CLASS)
   ZipkinSpanCollector braveSpanCollector() {
     return new ZipkinSpanCollector("127.0.0.1", this.scribePort);
   }
 
   @Override
   public void addInterceptors(InterceptorRegistry registry) {
-    ServerAndClientSpanState state = braveSpanState();
-    ServerTracer tracer = tracer(state, this.scribePort);
+    ServerTracer tracer = brave().serverTracer();
     registry.addInterceptor(new ServletHandlerInterceptor(
-        new ServerRequestInterceptor(tracer),
-        new ServerResponseInterceptor(tracer),
-        new DefaultSpanNameProvider(),
-        new ServerSpanThreadBinder(state )
-    ));
+        new ServerRequestInterceptor(tracer), new ServerResponseInterceptor(tracer),
+        new DefaultSpanNameProvider(), brave().serverSpanThreadBinder()));
   }
 }
