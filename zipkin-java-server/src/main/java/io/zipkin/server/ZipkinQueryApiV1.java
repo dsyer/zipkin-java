@@ -13,13 +13,12 @@
  */
 package io.zipkin.server;
 
-import io.zipkin.Codec;
-import io.zipkin.QueryRequest;
-import io.zipkin.Span;
-import io.zipkin.SpanStore;
+import static io.zipkin.internal.Util.checkNotNull;
+import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
+
 import java.util.Collections;
 import java.util.List;
-import okio.Buffer;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -32,8 +31,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-import static io.zipkin.internal.Util.checkNotNull;
-import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
+import io.zipkin.Codec;
+import io.zipkin.QueryRequest;
+import io.zipkin.Span;
+import io.zipkin.SpanStore;
+import okio.Buffer;
 
 /**
  * Implements the json api used by {@code zipkin-web}.
@@ -47,7 +49,7 @@ public class ZipkinQueryApiV1 {
   private static final String APPLICATION_THRIFT = "application/x-thrift";
 
   @Autowired
-  @Value("${zipkin.query.lookback}")
+  @Value("${zipkin.query.lookback:86400000}")
   int defaultLookback = 86400000; // 7 days in millis
 
   private final SpanStore spanStore;
@@ -66,34 +68,34 @@ public class ZipkinQueryApiV1 {
   @RequestMapping(value = "/dependencies", method = RequestMethod.GET, produces = APPLICATION_JSON_VALUE)
   public byte[] getDependencies(@RequestParam(value = "endTs", required = true) long endTs,
                                 @RequestParam(value = "lookback", required = false) Long lookback) {
-    return jsonCodec.writeDependencyLinks(spanStore.getDependencies(endTs, lookback != null ? lookback : defaultLookback));
+    return this.jsonCodec.writeDependencyLinks(this.spanStore.getDependencies(endTs, lookback != null ? lookback : this.defaultLookback));
   }
 
   @RequestMapping(value = "/services", method = RequestMethod.GET)
   public List<String> getServiceNames() {
-    return spanStore.getServiceNames();
+    return this.spanStore.getServiceNames();
   }
 
   @RequestMapping(value = "/spans", method = RequestMethod.GET)
   public List<String> getSpanNames(
       @RequestParam(value = "serviceName", required = true) String serviceName) {
-    return spanStore.getSpanNames(serviceName);
+    return this.spanStore.getSpanNames(serviceName);
   }
 
   @RequestMapping(value = "/spans", method = RequestMethod.POST)
   @ResponseStatus(HttpStatus.ACCEPTED)
   public void uploadSpansJson(@RequestBody byte[] body) {
-    List<Span> spans = jsonCodec.readSpans(body);
+    List<Span> spans = this.jsonCodec.readSpans(body);
     if (spans == null) throw new MalformedSpansException(APPLICATION_JSON_VALUE);
-    spanWriter.write(spanStore, spans);
+    this.spanWriter.write(this.spanStore, spans);
   }
 
   @RequestMapping(value = "/spans", method = RequestMethod.POST, consumes = APPLICATION_THRIFT)
   @ResponseStatus(HttpStatus.ACCEPTED)
   public void uploadSpansThrift(@RequestBody byte[] body) {
-    List<Span> spans = thriftCodec.readSpans(body);
+    List<Span> spans = this.thriftCodec.readSpans(body);
     if (spans == null) throw new MalformedSpansException(APPLICATION_THRIFT);
-    spanWriter.write(spanStore, spans);
+    this.spanWriter.write(this.spanStore, spans);
   }
 
   @RequestMapping(value = "/traces", method = RequestMethod.GET, produces = APPLICATION_JSON_VALUE)
@@ -111,7 +113,7 @@ public class ZipkinQueryApiV1 {
         .minDuration(minDuration)
         .maxDuration(maxDuration)
         .endTs(endTs)
-        .lookback(lookback != null ? lookback : defaultLookback)
+        .lookback(lookback != null ? lookback : this.defaultLookback)
         .limit(limit);
 
     if (annotationQuery != null && !annotationQuery.isEmpty()) {
@@ -127,19 +129,19 @@ public class ZipkinQueryApiV1 {
         }
       }
     }
-    return jsonCodec.writeTraces(spanStore.getTraces(builder.build()));
+    return this.jsonCodec.writeTraces(this.spanStore.getTraces(builder.build()));
   }
 
   @RequestMapping(value = "/trace/{traceId}", method = RequestMethod.GET, produces = APPLICATION_JSON_VALUE)
   public byte[] getTrace(@PathVariable String traceId) {
     @SuppressWarnings("resource")
     long id = new Buffer().writeUtf8(traceId).readHexadecimalUnsignedLong();
-    List<List<Span>> traces = spanStore.getTracesByIds(Collections.singletonList(id));
+    List<List<Span>> traces = this.spanStore.getTracesByIds(Collections.singletonList(id));
 
     if (traces.isEmpty()) {
       throw new TraceNotFoundException(traceId, id);
     }
-    return jsonCodec.writeSpans(traces.get(0));
+    return this.jsonCodec.writeSpans(traces.get(0));
   }
 
   @ExceptionHandler(TraceNotFoundException.class)

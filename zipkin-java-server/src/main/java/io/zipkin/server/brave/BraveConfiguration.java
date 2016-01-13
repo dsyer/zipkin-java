@@ -13,15 +13,12 @@
  */
 package io.zipkin.server.brave;
 
-import com.github.kristofa.brave.Brave;
-import com.github.kristofa.brave.ServerTracer;
-import io.zipkin.Endpoint;
-import io.zipkin.SpanStore;
 import java.math.BigInteger;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.util.Collections;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,6 +31,12 @@ import org.springframework.context.annotation.Scope;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 
+import com.github.kristofa.brave.Brave;
+import com.github.kristofa.brave.ServerTracer;
+
+import io.zipkin.Endpoint;
+import io.zipkin.SpanStore;
+
 @Configuration
 @ConditionalOnClass(ServerTracer.class)
 @Import({ApiTracerConfiguration.class, JDBCTracerConfiguration.class})
@@ -45,14 +48,14 @@ public class BraveConfiguration {
 
   @Scheduled(fixedDelayString = "${zipkin.collector.delayMillisec:1000}")
   public void flushSpans() {
-    spanCollector.flush();
+    this.spanCollector.flush();
   }
 
   /** This gets the lanIP without trying to lookup its name. */
   // http://stackoverflow.com/questions/8765578/get-local-ip-address-without-connecting-to-the-internet
   @Bean
   @Scope
-  Endpoint local(@Value("${server.port}") int port) {
+  Endpoint local(@Value("${server.port:9411}") int port) {
     int ipv4;
     try {
       ipv4 = Collections.list(NetworkInterface.getNetworkInterfaces()).stream()

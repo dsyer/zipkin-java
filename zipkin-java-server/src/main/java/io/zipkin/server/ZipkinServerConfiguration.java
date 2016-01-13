@@ -13,14 +13,8 @@
  */
 package io.zipkin.server;
 
-import com.github.kristofa.brave.Brave;
-import io.zipkin.Codec;
-import io.zipkin.Sampler;
-import io.zipkin.SpanStore;
-import io.zipkin.jdbc.JDBCSpanStore;
-import io.zipkin.server.ZipkinServerProperties.Store.Type;
-import io.zipkin.server.brave.TraceWritesSpanStore;
 import javax.sql.DataSource;
+
 import org.jooq.ExecuteListenerProvider;
 import org.jooq.conf.Settings;
 import org.springframework.beans.BeansException;
@@ -34,6 +28,15 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableAsync;
+
+import com.github.kristofa.brave.Brave;
+
+import io.zipkin.Codec;
+import io.zipkin.Sampler;
+import io.zipkin.SpanStore;
+import io.zipkin.jdbc.JDBCSpanStore;
+import io.zipkin.server.ZipkinServerProperties.Store.Type;
+import io.zipkin.server.brave.TraceWritesSpanStore;
 
 @Configuration
 @EnableConfigurationProperties(ZipkinServerProperties.class)
@@ -57,15 +60,15 @@ public class ZipkinServerConfiguration {
   }
 
   @Bean
-  @ConditionalOnMissingBean(Sampler.class) Sampler traceIdSampler(@Value("${zipkin.collector.sample-rate}") float rate) {
+  @ConditionalOnMissingBean(Sampler.class) Sampler traceIdSampler(@Value("${zipkin.collector.sample-rate:1.0}") float rate) {
     return Sampler.create(rate);
   }
 
   @Bean
   SpanStore spanStore() {
     SpanStore result;
-    if (datasource != null && server.getStore().getType() == Type.mysql) {
-      result = new JDBCSpanStore(datasource, new Settings().withRenderSchema(false), listener);
+    if (this.datasource != null && this.server.getStore().getType() == Type.mysql) {
+      result = new JDBCSpanStore(this.datasource, new Settings().withRenderSchema(false), this.listener);
     } else {
       result = new InMemorySpanStore();
     }
@@ -88,8 +91,8 @@ public class ZipkinServerConfiguration {
     @Override
     public Object postProcessAfterInitialization(Object bean, String beanName)
         throws BeansException {
-      if (bean instanceof SpanStore && brave != null) {
-        return new TraceWritesSpanStore(brave, (SpanStore) bean);
+      if (bean instanceof SpanStore && this.brave != null) {
+        return new TraceWritesSpanStore(this.brave, (SpanStore) bean);
       }
       return bean;
     }
