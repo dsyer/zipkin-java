@@ -13,7 +13,13 @@
  */
 package zipkin.server;
 
+import static org.hamcrest.CoreMatchers.startsWith;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import java.util.Arrays;
+
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -25,14 +31,11 @@ import org.springframework.test.context.web.WebAppConfiguration;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.ConfigurableWebApplicationContext;
+
 import zipkin.Annotation;
 import zipkin.Codec;
 import zipkin.Endpoint;
 import zipkin.Span;
-
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringApplicationConfiguration(classes = ZipkinServer.class)
 @RunWith(SpringJUnit4ClassRunner.class)
@@ -46,13 +49,13 @@ public class ZipkinServerIntegrationTests {
 
   @Before
   public void init() {
-    mockMvc = MockMvcBuilders.webAppContextSetup(context).build();
+    this.mockMvc = MockMvcBuilders.webAppContextSetup(this.context).build();
   }
 
   @Test
   public void writeSpans_noContentTypeIsJson() throws Exception {
     byte[] body = Codec.JSON.writeSpans(Arrays.asList(newSpan(1L, 1L, "foo", "an", "bar")));
-    mockMvc
+    this.mockMvc
         .perform(post("/api/v1/spans").content(body))
         .andExpect(status().isAccepted());
   }
@@ -60,16 +63,16 @@ public class ZipkinServerIntegrationTests {
   @Test
   public void writeSpans_malformedJsonIsBadRequest() throws Exception {
     byte[] body = {'h', 'e', 'l', 'l', 'o'};
-    mockMvc
+    this.mockMvc
         .perform(post("/api/v1/spans").content(body))
         .andExpect(status().isBadRequest())
-        .andExpect(content().string("Malformed reading List<Span> from json: hello"));
+        .andExpect(content().string(startsWith("Malformed reading List<Span> from json: hello")));
   }
 
   @Test
   public void writeSpans_contentTypeXThrift() throws Exception {
     byte[] body = Codec.THRIFT.writeSpans(Arrays.asList(newSpan(1L, 2L, "foo", "an", "bar")));
-    mockMvc
+    this.mockMvc
         .perform(post("/api/v1/spans").content(body).contentType("application/x-thrift"))
         .andExpect(status().isAccepted());
   }
@@ -77,10 +80,10 @@ public class ZipkinServerIntegrationTests {
   @Test
   public void writeSpans_malformedThriftIsBadRequest() throws Exception {
     byte[] body = {'h', 'e', 'l', 'l', 'o'};
-    mockMvc
+    this.mockMvc
         .perform(post("/api/v1/spans").content(body).contentType("application/x-thrift"))
         .andExpect(status().isBadRequest())
-        .andExpect(content().string("Malformed reading List<Span> from TBinary: aGVsbG8="));
+        .andExpect(content().string(startsWith("Malformed reading List<Span> from TBinary: aGVsbG8=")));
   }
 
   static Span newSpan(long traceId, long id, String spanName, String value, String service) {
