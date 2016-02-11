@@ -28,6 +28,7 @@
     <module>interop</module>
     <module>zipkin-spanstores</module>
     <module>zipkin-server</module>
+    <module>zipkin-server-minimal</module>
   </modules>
 
   <properties>
